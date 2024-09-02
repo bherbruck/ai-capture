@@ -14,7 +14,7 @@
   let cameraStream: MediaStream | null = null
   let mediaRecorder: MediaRecorder | undefined = undefined
   let recordedChunks: Blob[] = []
-  let csvContent = 'frame,timestamp,yaw,pitch,roll\n'
+  let csvContent = 'frame,yaw,pitch,roll\n'
 
   let currentOrientation: Quaternion
   let previousOrientation: Quaternion
