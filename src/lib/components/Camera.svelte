@@ -186,7 +186,7 @@
   }
 
   function startRecording() {
-    csvContent = 'frame,timestamp,yaw,pitch,roll\n'
+    csvContent = 'frame,yaw,pitch,roll\n'
     frameCount = 0
     recordedChunks = []
     mediaRecorder?.start()
