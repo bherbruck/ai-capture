@@ -11,7 +11,7 @@
 
   let canvasElement: HTMLCanvasElement
   let canvasCtx: CanvasRenderingContext2D
-  let stream: MediaStream | null = null
+  let cameraStream: MediaStream | null = null
   let mediaRecorder: MediaRecorder | undefined = undefined
   let recordedChunks: Blob[] = []
   let csvContent = 'frame,timestamp,yaw,pitch,roll\n'
@@ -26,29 +26,43 @@
 
   let orientationSensor: RelativeOrientationSensor | null = null
 
-  let frameCount = 0 // Track the frame number
+  let frameCount = 0
+
+  let currentSensorTimestamp: number = 0
+  let previousSensorTimestamp: number = 0
 
   function handleOrientation(event: Event) {
     const sensor = event.target as RelativeOrientationSensor
-    if (sensor.quaternion) {
-      currentOrientation = {
-        x: sensor.quaternion[0],
-        y: sensor.quaternion[1],
-        z: sensor.quaternion[2],
-        w: sensor.quaternion[3],
-      }
 
-      if (isRecording) {
-        const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
-        rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
-      }
+    if (!sensor?.quaternion) return
+
+    currentOrientation = {
+      x: sensor.quaternion[0],
+      y: sensor.quaternion[1],
+      z: sensor.quaternion[2],
+      w: sensor.quaternion[3],
     }
+
+    currentSensorTimestamp = sensor.timestamp ?? 0
   }
 
-  function setupMediaRecorder() {
-    if (!stream) return
+  function startVideoFeed() {
+    if (!canvasCtx || !cameraStream) return
 
-    mediaRecorder = new MediaRecorder(stream, {
+    const videoTrack = cameraStream.getVideoTracks()[0]
+    const processor = new MediaStreamTrackProcessor({ track: videoTrack })
+    const reader = processor.readable.getReader()
+
+    // Create a MediaStream and a MediaStreamTrackGenerator
+    const mediaStream = new MediaStream()
+    const videoTrackGenerator = new MediaStreamTrackGenerator({
+      kind: 'video',
+    })
+    const writable = videoTrackGenerator.writable.getWriter()
+    mediaStream.addTrack(videoTrackGenerator)
+
+    // Initialize the MediaRecorder with the custom MediaStream
+    mediaRecorder = new MediaRecorder(mediaStream, {
       mimeType: 'video/mp4; codecs="avc1.424028"',
     })
 
@@ -57,14 +71,6 @@
         recordedChunks.push(event.data)
       }
     }
-  }
-
-  function startVideoFeed() {
-    if (!canvasCtx || !stream) return
-
-    const videoTrack = stream.getVideoTracks()[0]
-    const processor = new MediaStreamTrackProcessor({ track: videoTrack })
-    const reader = processor.readable.getReader()
 
     // Process frames in a loop
     isCapturing = true
@@ -76,6 +82,22 @@
       canvasElement.height = videoFrame.displayHeight
       canvasCtx.drawImage(videoFrame, 0, 0)
 
+      // Only update rotation delta when a new frame is processed
+      if (
+        currentOrientation &&
+        previousOrientation &&
+        previousSensorTimestamp !== currentSensorTimestamp
+      ) {
+        const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
+        rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
+        previousOrientation = { ...currentOrientation }
+        previousSensorTimestamp = currentSensorTimestamp
+      } else {
+        previousOrientation = { ...currentOrientation }
+        if (isCapturing) requestAnimationFrame(processFrame)
+        return
+      }
+
       const delta = drawOrientationDifference()
 
       const roundedYaw = delta?.yaw.toFixed(3)
@@ -84,12 +106,13 @@
 
       if (isRecording) {
         csvContent += `${frameCount},${roundedYaw},${roundedPitch},${roundedRoll}\n`
-        frameCount++ // Increment frame count during recording
+        frameCount++
+
+        await writable.write(videoFrame)
       }
 
-      videoFrame.close() // Release the video frame after using it
+      videoFrame.close()
 
-      // Continue processing frames if capturing
       if (isCapturing) requestAnimationFrame(processFrame)
     }
 
@@ -97,18 +120,10 @@
   }
 
   function drawOrientationDifference() {
-    if (!canvasCtx || !currentOrientation) return
-
-    if (!previousOrientation) {
-      previousOrientation = { ...currentOrientation }
-      return
-    }
+    if (!canvasCtx || rotationDelta == undefined) return
 
     const centerX = canvasElement.width / 2
     const centerY = canvasElement.height / 2
-
-    const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
-    rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
 
     // Scale factor to show the movement trail
     const scale = 10
@@ -131,15 +146,13 @@
     canvasCtx.fillStyle = 'red'
     canvasCtx.fill()
 
-    previousOrientation = { ...currentOrientation }
-
     return rotationDelta
   }
 
   function setupOrientationSensor() {
     if ('RelativeOrientationSensor' in window) {
       orientationSensor = new RelativeOrientationSensor({
-        frequency: 100,
+        frequency: 60,
         referenceFrame: 'screen',
       })
       orientationSensor.addEventListener('reading', handleOrientation)
@@ -159,13 +172,6 @@
     isRecording = !isRecording
   }
 
-  function startRecording() {
-    csvContent = 'frame,yaw,pitch,roll\n'
-    frameCount = 0
-    recordedChunks = []
-    mediaRecorder?.start()
-  }
-
   function generateTimestamp(): string {
     const now = new Date()
 
@@ -177,6 +183,13 @@
     const seconds = String(now.getSeconds()).padStart(2, '0')
 
     return `${year}${month}${day}_${hours}${minutes}${seconds}`
+  }
+
+  function startRecording() {
+    csvContent = 'frame,timestamp,yaw,pitch,roll\n'
+    frameCount = 0
+    recordedChunks = []
+    mediaRecorder?.start()
   }
 
   function stopRecording() {
@@ -201,8 +214,8 @@
   function stopVideoFeed() {
     isCapturing = false
 
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop())
     }
     if (orientationSensor) {
       orientationSensor.stop()
@@ -231,8 +244,7 @@
         audio: false,
       })
       .then((mediaStream) => {
-        stream = mediaStream
-        setupMediaRecorder()
+        cameraStream = mediaStream
         setupOrientationSensor()
         startVideoFeed() // Always start video feed immediately
       })
