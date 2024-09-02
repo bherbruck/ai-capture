@@ -21,8 +21,11 @@
 
   let rotationDelta: Euler
 
-  let isRecording = false
+  let isReading = false
   let isCapturing = false
+  let isRecording = false
+
+  $: isLoading = !isReading || !isCapturing
 
   let orientationSensor: RelativeOrientationSensor | null = null
 
@@ -84,25 +87,27 @@
 
       // Only update rotation delta when a new frame is processed
       if (
-        currentOrientation &&
-        previousOrientation &&
-        previousSensorTimestamp !== currentSensorTimestamp
+        !(
+          currentOrientation &&
+          previousOrientation &&
+          previousSensorTimestamp !== currentSensorTimestamp
+        )
       ) {
-        const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
-        rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
-        previousOrientation = { ...currentOrientation }
-        previousSensorTimestamp = currentSensorTimestamp
-      } else {
         previousOrientation = { ...currentOrientation }
         if (isCapturing) requestAnimationFrame(processFrame)
+        videoFrame.close()
         return
       }
 
-      const delta = drawOrientationDifference()
+      const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
+      rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
+      previousOrientation = { ...currentOrientation }
+      previousSensorTimestamp = currentSensorTimestamp
+      drawOrientationDifference()
 
-      const roundedYaw = delta?.yaw.toFixed(3)
-      const roundedPitch = delta?.pitch.toFixed(3)
-      const roundedRoll = delta?.roll.toFixed(3)
+      const roundedYaw = rotationDelta.yaw.toFixed(3)
+      const roundedPitch = rotationDelta.pitch.toFixed(3)
+      const roundedRoll = rotationDelta.roll.toFixed(3)
 
       if (isRecording) {
         csvContent += `${frameCount},${roundedYaw},${roundedPitch},${roundedRoll}\n`
@@ -145,8 +150,6 @@
     canvasCtx.arc(endX, endY, 5, 0, 2 * Math.PI)
     canvasCtx.fillStyle = 'red'
     canvasCtx.fill()
-
-    return rotationDelta
   }
 
   function setupOrientationSensor() {
@@ -156,6 +159,12 @@
         referenceFrame: 'screen',
       })
       orientationSensor.addEventListener('reading', handleOrientation)
+      orientationSensor.addEventListener('error', (event) => {
+        alert(`Orientation sensor error: ${event.error.message}`)
+      })
+      orientationSensor.addEventListener('activate', (event) => {
+        isReading = true
+      })
       orientationSensor.start()
     } else {
       console.error('RelativeOrientationSensor is not supported in this browser.')
@@ -270,7 +279,9 @@
     on:click={toggleRecording}
     class="fixed bottom-4 h-16 w-16 rounded-full border bg-white portrait:bottom-4 landscape:bottom-auto landscape:right-4"
     aria-label="Capture"
+    class:disabled={isLoading}
     class:recording={isRecording}
+    disabled={isLoading}
   >
   </button>
 </div>
@@ -278,5 +289,9 @@
 <style lang="postcss">
   .recording {
     @apply bg-red-500;
+  }
+
+  .disabled {
+    @apply bg-gray-500 opacity-25;
   }
 </style>
