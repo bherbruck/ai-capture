@@ -1,17 +1,6 @@
+import type { Quaternion, Euler } from '$lib/types'
+
 const RAD2DEG = 180 / Math.PI
-
-export type Quaternion = {
-  x: number
-  y: number
-  z: number
-  w: number
-}
-
-export type Euler = {
-  roll: number
-  pitch: number
-  yaw: number
-}
 
 export const quaternionMultiply = (a: Quaternion, b: Quaternion): Quaternion => {
   return {
@@ -42,7 +31,7 @@ export const quaternionToEuler = ({ x, y, z, w }: Quaternion): Euler => {
   return { yaw: -pitch, pitch: roll, roll: -yaw }
 }
 
-export const calculateLocalRotationDelta = (current: Quaternion, last: Quaternion): Quaternion => {
+export const localRotationDelta = (current: Quaternion, last: Quaternion): Quaternion => {
   const lastInverse = quaternionConjugate(last)
   return quaternionMultiply(lastInverse, current)
 }
