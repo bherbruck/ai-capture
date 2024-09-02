@@ -41,7 +41,6 @@
       if (isRecording) {
         const rotationDeltaQuaternion = localRotationDelta(currentOrientation, previousOrientation)
         rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
-        // We'll add the actual timestamp when we process the video frame
       }
     }
   }
@@ -49,9 +48,8 @@
   function setupMediaRecorder() {
     if (!stream) return
 
-    // Setup MediaRecorder with WebM format
     mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm; codecs=vp8',
+      mimeType: 'video/mp4; codecs="avc1.424028"',
     })
 
     mediaRecorder.ondataavailable = (event) => {
@@ -190,7 +188,7 @@
         const webmBlob = new Blob(recordedChunks, { type: 'video/webm' })
         const zip = new JSZip()
 
-        zip.file(`${timestamp}.webm`, webmBlob)
+        zip.file(`${timestamp}.mp4`, webmBlob)
         zip.file(`${timestamp}.csv`, csvContent)
 
         zip.generateAsync({ type: 'blob' }).then((blob) => {
@@ -262,7 +260,6 @@
     aria-label="Capture"
     class:recording={isRecording}
   >
-    <!-- You can add an icon inside the button if needed -->
   </button>
 </div>
 
