@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/web-manifest",
+  "manifest_version": 2,
+  "short_name": "AI Capture",
+  "name": "AI Capture",
+  "display": "fullscreen",
+  "orientation": "landscape"
+}
