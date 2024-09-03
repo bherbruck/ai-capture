@@ -35,3 +35,19 @@ export const localRotationDelta = (current: Quaternion, last: Quaternion): Quate
   const lastInverse = quaternionConjugate(last)
   return quaternionMultiply(lastInverse, current)
 }
+
+export const eulerToQuaternion = ({ yaw, pitch, roll }: Euler): Quaternion => {
+  const cy = Math.cos((yaw * 0.5 * Math.PI) / 180)
+  const sy = Math.sin((yaw * 0.5 * Math.PI) / 180)
+  const cp = Math.cos((pitch * 0.5 * Math.PI) / 180)
+  const sp = Math.sin((pitch * 0.5 * Math.PI) / 180)
+  const cr = Math.cos((roll * 0.5 * Math.PI) / 180)
+  const sr = Math.sin((roll * 0.5 * Math.PI) / 180)
+
+  return {
+    w: cr * cp * cy + sr * sp * sy,
+    x: sr * cp * cy - cr * sp * sy,
+    y: cr * sp * cy + sr * cp * sy,
+    z: cr * cp * sy - sr * sp * cy,
+  }
+}
