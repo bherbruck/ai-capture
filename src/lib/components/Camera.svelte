@@ -6,7 +6,7 @@
   import OrientationSensor from './OrientationSensor.svelte'
   import RecordingControls from './RecordingControls.svelte'
   import VideoCamera from './VideoCamera.svelte'
-  import DeviceOrientation from './DeviceOrientation.svelte'
+  // import DeviceOrientation from './DeviceOrientation.svelte'
 
   let canvasElement: HTMLCanvasElement
   let isRecording = false
