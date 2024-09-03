@@ -1,27 +1,23 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
-  import type { OrientationData } from '$lib/types'
-
-  export let orientationData: OrientationData | null = null
+  import { onMount, onDestroy, createEventDispatcher } from 'svelte'
+  import type { Quaternion } from '$lib/types'
 
   let sensor: RelativeOrientationSensor
 
-  let previousOrientation: [number, number, number, number] | undefined
+  let previousTimestamp: number | undefined
+
+  const dispatch = createEventDispatcher<{ quaternion: Quaternion }>()
 
   onMount(() => {
     if ('RelativeOrientationSensor' in window) {
       sensor = new AbsoluteOrientationSensor({ frequency: 60, referenceFrame: 'screen' })
       sensor.addEventListener('reading', () => {
         if (!sensor.quaternion || !sensor.timestamp) return
-        orientationData = {
-          quaternion: {
-            x: sensor.quaternion[0],
-            y: sensor.quaternion[1],
-            z: sensor.quaternion[2],
-            w: sensor.quaternion[3],
-          },
-          timestamp: sensor.timestamp,
-        }
+        if (previousTimestamp && sensor.timestamp <= previousTimestamp) return
+        const timestamp = sensor.timestamp
+        const [x, y, z, w] = sensor.quaternion
+        dispatch('quaternion', { x, y, z, w })
+        previousTimestamp = timestamp
       })
       sensor.start()
     } else {

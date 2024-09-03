@@ -1,27 +1,35 @@
 <script lang="ts">
-  import type { Euler, OrientationData } from '$lib/types'
+  import type { Euler, Quaternion } from '$lib/types'
   import { localRotationDelta, quaternionToEuler } from '$lib/utils/angles'
   import { saveRecording } from '$lib/utils/recording'
   import { onDestroy, onMount } from 'svelte'
   import OrientationSensor from './OrientationSensor.svelte'
   import RecordingControls from './RecordingControls.svelte'
   import VideoCamera from './VideoCamera.svelte'
+  import DeviceOrientation from './DeviceOrientation.svelte'
 
   let canvasElement: HTMLCanvasElement
   let isRecording = false
   let recordedChunks: Blob[] = []
   let orientationRecords: Euler[] = []
-  let frameCount = 0
 
-  let currentOrientation: OrientationData | null = null
-  let previousOrientation: OrientationData | null = null
+  let currentQuaternion: Quaternion | undefined
+  let previousQuaternion: Quaternion | undefined
   let mediaRecorder: MediaRecorder | undefined
   let videoTrackGenerator: MediaStreamTrackGenerator<VideoFrame> | undefined
   let writable: WritableStreamDefaultWriter<VideoFrame> | undefined
 
-  $: isLoading = !canvasElement || !currentOrientation
+  let canvasCtx: CanvasRenderingContext2D | null = null
+
+  $: isLoading = !canvasElement
 
   onMount(() => {
+    canvasCtx = canvasElement.getContext('2d')
+    if (!canvasCtx) {
+      console.error('Failed to get canvas context.')
+      return
+    }
+
     videoTrackGenerator = new MediaStreamTrackGenerator({ kind: 'video' })
     writable = videoTrackGenerator.writable.getWriter()
     const mediaStream = new MediaStream([videoTrackGenerator])
@@ -40,7 +48,6 @@
       await saveRecording(recordedChunks, orientationRecords)
       recordedChunks = []
       orientationRecords = []
-      frameCount = 0
     }
   })
 
@@ -58,38 +65,36 @@
   }
 
   async function handleFrame({ detail: frame }: CustomEvent<VideoFrame>) {
-    if (!currentOrientation || !currentOrientation.quaternion) return
+    canvasElement.width = frame.displayWidth
+    canvasElement.height = frame.displayHeight
+    canvasCtx?.drawImage(frame, 0, 0)
 
-    if (previousOrientation && previousOrientation.timestamp !== currentOrientation.timestamp) {
-      // // if all the quaternions are the same, skip it (maybe...)
-      // if (
-      //   currentOrientation.quaternion.x === previousOrientation.quaternion.x &&
-      //   currentOrientation.quaternion.y === previousOrientation.quaternion.y &&
-      //   currentOrientation.quaternion.z === previousOrientation.quaternion.z &&
-      //   currentOrientation.quaternion.w === previousOrientation.quaternion.w
-      // ) {
-      //   return
-      // }
-      const rotationDeltaQuaternion = localRotationDelta(
-        currentOrientation.quaternion,
-        previousOrientation.quaternion,
+    if (previousQuaternion && currentQuaternion) {
+      const rotationDelta = quaternionToEuler(
+        localRotationDelta(currentQuaternion, previousQuaternion),
       )
-      const rotationDelta = quaternionToEuler(rotationDeltaQuaternion)
-      drawOrientationDifference(rotationDelta)
 
-      if (isRecording) {
-        orientationRecords.push(rotationDelta)
-        await writable?.write(frame)
+      if (rotationDelta.pitch || rotationDelta.yaw || rotationDelta.roll) {
+        drawOrientationDifference(rotationDelta)
+
+        if (isRecording) {
+          orientationRecords.push(rotationDelta)
+          await writable?.write(frame)
+          frame.close()
+        }
       }
     }
 
-    previousOrientation = currentOrientation
+    if (currentQuaternion) previousQuaternion = currentQuaternion
+    frame.close()
+  }
+
+  function handleQuaternion({ detail: quaternion }: CustomEvent<Quaternion>) {
+    currentQuaternion = quaternion
   }
 
   function drawOrientationDifference(rotationDelta: Euler) {
-    if (!canvasElement) return
-    const ctx = canvasElement.getContext('2d')
-    if (!ctx) return
+    if (!canvasCtx) return
 
     const scale = Math.min(canvasElement.width, canvasElement.height) / 20
     const centerX = canvasElement.width / 2
@@ -98,24 +103,24 @@
     const endX = centerX - rotationDelta.yaw * scale
     const endY = centerY + rotationDelta.pitch * scale
 
-    ctx.beginPath()
-    ctx.moveTo(centerX, centerY)
-    ctx.lineTo(endX, endY)
-    ctx.strokeStyle = 'red'
-    ctx.lineWidth = 3
-    ctx.stroke()
+    canvasCtx.beginPath()
+    canvasCtx.moveTo(centerX, centerY)
+    canvasCtx.lineTo(endX, endY)
+    canvasCtx.strokeStyle = 'red'
+    canvasCtx.lineWidth = 3
+    canvasCtx.stroke()
 
-    ctx.beginPath()
-    ctx.arc(endX, endY, 5, 0, 2 * Math.PI)
-    ctx.fillStyle = 'red'
-    ctx.fill()
+    canvasCtx.beginPath()
+    canvasCtx.arc(endX, endY, 5, 0, 2 * Math.PI)
+    canvasCtx.fillStyle = 'red'
+    canvasCtx.fill()
   }
 </script>
 
 <div class="flex h-full w-full items-center justify-center bg-black">
   <canvas bind:this={canvasElement} class="max-h-full max-w-full portrait:w-full landscape:h-full">
-    <VideoCamera {canvasElement} on:frame={handleFrame} />
+    <VideoCamera on:frame={handleFrame} />
   </canvas>
-  <OrientationSensor bind:orientationData={currentOrientation} />
+  <OrientationSensor on:quaternion={handleQuaternion} />
   <RecordingControls {isLoading} {isRecording} on:toggleRecording={toggleRecording} />
 </div>
