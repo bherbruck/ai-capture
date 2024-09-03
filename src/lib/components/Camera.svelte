@@ -74,14 +74,12 @@
         localRotationDelta(currentQuaternion, previousQuaternion),
       )
 
-      if (rotationDelta.pitch || rotationDelta.yaw || rotationDelta.roll) {
-        drawOrientationDifference(rotationDelta)
+      drawOrientationDifference(rotationDelta)
 
-        if (isRecording) {
-          orientationRecords.push(rotationDelta)
-          await writable?.write(frame)
-          frame.close()
-        }
+      if (isRecording) {
+        orientationRecords.push(rotationDelta)
+        await writable?.write(frame)
+        frame.close()
       }
     }
 
